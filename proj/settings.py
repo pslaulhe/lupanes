@@ -10,7 +10,9 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/4.2/ref/settings/
 """
 
+import atexit
 import datetime
+import logging
 from email.utils import getaddresses
 from pathlib import Path
 
@@ -59,6 +61,29 @@ DEBUG = env('DEBUG')
 
 ALLOWED_HOSTS = env('ALLOWED_HOSTS', cast=list, default=[])
 
+# PostHog is optional so deployments without analytics configuration continue
+# running. When configured, this singleton is reused by Django middleware and
+# later server-side analytics calls.
+POSTHOG_PROJECT_TOKEN = env('POSTHOG_PROJECT_TOKEN', default=None)
+POSTHOG_HOST = env('POSTHOG_HOST', default=None)
+POSTHOG_MW_CLIENT = None
+
+if POSTHOG_PROJECT_TOKEN and POSTHOG_HOST:
+    from posthog import Posthog
+
+    POSTHOG_MW_CLIENT = Posthog(
+        project_api_key=POSTHOG_PROJECT_TOKEN,
+        host=POSTHOG_HOST,
+        enable_exception_autocapture=True,
+    )
+    atexit.register(POSTHOG_MW_CLIENT.shutdown)
+elif DEBUG:
+    logging.getLogger(__name__).warning(
+        'POSTHOG_PROJECT_TOKEN variable required by PostHog is missing or '
+        'un-configured, this causes events to be silently missed. This error '
+        'stops appearing once POSTHOG_PROJECT_TOKEN is configured'
+    )
+
 
 # Application definition
 
@@ -83,6 +108,11 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    *(
+        ['posthog.integrations.django.PosthogContextMiddleware']
+        if POSTHOG_MW_CLIENT
+        else []
+    ),
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]

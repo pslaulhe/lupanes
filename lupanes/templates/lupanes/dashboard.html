@@ -4,6 +4,11 @@
 {% block main %}
 <h1>Bienvenido/a {{ request.user.username }}</h1>
 
+{% if posthog_backend_flag_enabled %}
+<span class="badge text-bg-light">Función de servidor experimental</span>
+{% endif %}
+<span id="posthog-frontend-flag-label" class="badge text-bg-light" hidden>Interfaz experimental</span>
+
 <h2>¿Qué quieres hacer?</h2>
 
 {% if request.user.is_customer %}
@@ -69,3 +74,18 @@
 </div>
 {% endif %}
 {% endblock main %}
+
+{% block extra_script %}
+{{ block.super }}
+{% if posthog_project_token and posthog_host %}
+<script>
+  const frontendFlagKey = '{{ posthog_frontend_flag_key|escapejs }}';
+
+  posthog.onFeatureFlags(function () {
+    if (posthog.isFeatureEnabled(frontendFlagKey)) {
+      document.getElementById('posthog-frontend-flag-label').hidden = false;
+    }
+  });
+</script>
+{% endif %}
+{% endblock extra_script %}

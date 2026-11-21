@@ -20,6 +20,7 @@ from django.views.generic.edit import CreateView, DeleteView, UpdateView
 from gspread.exceptions import APIError
 
 from lupanes.exceptions import RetryExhausted
+from lupanes.feature_flags import WIZARD_EXAMPLE_BACKEND_FLAG
 from lupanes.forms import DeliveryNoteCreateForm, NotifyMissingProductForm
 from lupanes.models import DeliveryNote
 from lupanes.users.mixins import CustomerAuthMixin
@@ -33,6 +34,25 @@ class DashboardView(LoginRequiredMixin, TemplateView):
 
     def get_context_data(self, **kwargs: Any) -> Dict[str, Any]:
         context = super().get_context_data(**kwargs)
+        distinct_id = str(self.request.user.pk)
+        backend_flag_enabled = False
+
+        if settings.POSTHOG_MW_CLIENT is not None:
+            try:
+                flags = settings.POSTHOG_MW_CLIENT.evaluate_flags(
+                    distinct_id,
+                    flag_keys=[WIZARD_EXAMPLE_BACKEND_FLAG],
+                )
+                backend_flag_enabled = flags.is_enabled(
+                    WIZARD_EXAMPLE_BACKEND_FLAG
+                )
+            except Exception:
+                logger.warning(
+                    "PostHog backend feature flag evaluation failed",
+                    exc_info=True,
+                )
+
+        context["posthog_backend_flag_enabled"] = backend_flag_enabled
 
         try:
             context["balance"] = self.request.user.current_balance
