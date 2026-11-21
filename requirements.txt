@@ -7,3 +7,4 @@ django-pwa
 dj_database_url==3.1.2
 psycopg2-binary==2.9.13
 gspread==6.2.1
+posthog
