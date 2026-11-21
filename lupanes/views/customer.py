@@ -25,6 +25,7 @@ from lupanes.models import DeliveryNote
 from lupanes.users.mixins import CustomerAuthMixin
 
 logger = logging.getLogger(__name__)
+posthog_logger = logging.getLogger("lupanes.posthog_logs")
 User = get_user_model()
 
 
@@ -75,13 +76,26 @@ class DeliveryNoteCreateView(CustomerAuthMixin, CreateView):
         msg = mark_safe("Albarán registrado correctamente. Si lo necesitas, tienes "
                         "<strong>hasta el final del día</strong> para editarlo o borrarlo.")
         messages.success(self.request, _(msg))
-        return super().form_valid(form)
+        response = super().form_valid(form)
+        if settings.POSTHOG_MW_CLIENT:
+            settings.POSTHOG_MW_CLIENT.capture("delivery_note_created")
+            posthog_logger.info(
+                "delivery_note_created",
+                extra={"operation": "delivery_note_create"},
+            )
+        return response
 
 
 class DeliveryNoteUpdateView(CustomerAuthMixin, UpdateView):
     model = DeliveryNote
     fields = ["product", "quantity"]
     success_url = reverse_lazy("lupanes:deliverynote-new")
+
+    def form_valid(self, form: BaseModelForm) -> HttpResponse:
+        response = super().form_valid(form)
+        if settings.POSTHOG_MW_CLIENT:
+            settings.POSTHOG_MW_CLIENT.capture("delivery_note_updated")
+        return response
 
     def get_queryset(self) -> QuerySet[Any]:
         today = timezone.now().date()
@@ -91,6 +105,12 @@ class DeliveryNoteUpdateView(CustomerAuthMixin, UpdateView):
 class DeliveryNoteDeleteView(CustomerAuthMixin, DeleteView):
     model = DeliveryNote
     success_url = reverse_lazy("lupanes:deliverynote-new")
+
+    def form_valid(self, form: BaseModelForm) -> HttpResponse:
+        response = super().form_valid(form)
+        if settings.POSTHOG_MW_CLIENT:
+            settings.POSTHOG_MW_CLIENT.capture("delivery_note_deleted")
+        return response
 
     def get_queryset(self) -> QuerySet[Any]:
         today = timezone.now().date()
@@ -106,6 +126,8 @@ class NotifyMissingProductView(CustomerAuthMixin, FormView):
         response = super().form_valid(form)
         form.cleaned_data["customer"] = self.request.user.username
         self.send_email(form)
+        if settings.POSTHOG_MW_CLIENT:
+            settings.POSTHOG_MW_CLIENT.capture("missing_product_reported")
         messages.success(self.request, "Se ha notificado correctamente que falta un producto. ¡Gracias!")
         return response
 

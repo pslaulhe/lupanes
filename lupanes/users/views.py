@@ -1,5 +1,6 @@
 from typing import Any
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.tokens import default_token_generator
@@ -26,6 +27,8 @@ class CustomerCreateView(ManagerAuthMixin, CreateView):
         form.instance.groups.add(get_customers_group())
 
         self.send_password_reset_email(form.instance)
+        if settings.POSTHOG_MW_CLIENT:
+            settings.POSTHOG_MW_CLIENT.capture("customer_created")
         return response
 
     def send_password_reset_email(self, new_user):

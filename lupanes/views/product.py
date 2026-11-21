@@ -1,5 +1,7 @@
+import logging
 from typing import Any, Dict
 
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db.models.functions import Lower
@@ -14,6 +16,8 @@ from django.views.generic import CreateView, DetailView, ListView, UpdateView
 from lupanes.forms import ProductForm, ProductPriceForm
 from lupanes.models import Product
 from lupanes.users.mixins import CustomerAuthMixin, ManagerAuthMixin
+
+posthog_logger = logging.getLogger("lupanes.posthog_logs")
 
 
 class ProductAjaxView(CustomerAuthMixin, DetailView):
@@ -56,6 +60,12 @@ class ProductCreateView(ManagerAuthMixin, CreateView):
 
     def get_success_url(self) -> str:
         messages.info(self.request, "Para continuar la creación del producto, introduce su precio.")
+        if settings.POSTHOG_MW_CLIENT:
+            settings.POSTHOG_MW_CLIENT.capture("product_created")
+            posthog_logger.info(
+                "product_created",
+                extra={"operation": "product_create"},
+            )
         return reverse("lupanes:product-edit", args=(self.object.pk,))
 
 
@@ -70,6 +80,8 @@ class ProductUpdateView(ManagerAuthMixin, UpdateView):
 
     def get_success_url(self) -> str:
         messages.success(self.request, "Producto actualizado correctamente.")
+        if settings.POSTHOG_MW_CLIENT:
+            settings.POSTHOG_MW_CLIENT.capture("product_updated")
         return reverse("lupanes:product-edit", args=(self.kwargs["pk"],))
 
 
@@ -80,6 +92,16 @@ class ProductNewPriceView(ManagerAuthMixin, CreateView):
         kwargs = super().get_form_kwargs()
         kwargs["product"] = get_object_or_404(Product, pk=self.kwargs["pk"])
         return kwargs
+
+    def form_valid(self, form: BaseModelForm) -> HttpResponse:
+        response = super().form_valid(form)
+        if settings.POSTHOG_MW_CLIENT:
+            settings.POSTHOG_MW_CLIENT.capture("product_price_created")
+            posthog_logger.info(
+                "product_price_created",
+                extra={"operation": "product_price_create"},
+            )
+        return response
 
     def form_invalid(self, form: BaseModelForm) -> HttpResponse:
         # TODO(@slamora): return `ProductUpdateView.form_invalid` response

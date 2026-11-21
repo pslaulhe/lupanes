@@ -10,7 +10,9 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/4.2/ref/settings/
 """
 
+import atexit
 import datetime
+import logging
 from email.utils import getaddresses
 from pathlib import Path
 
@@ -57,6 +59,32 @@ SECRET_KEY = env('SECRET_KEY')
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = env('DEBUG')
 
+# PostHog configuration. Production remains a no-op until both values are set.
+POSTHOG_PROJECT_TOKEN = env('POSTHOG_PROJECT_TOKEN', default=None)
+POSTHOG_HOST = env('POSTHOG_HOST', default=None)
+POSTHOG_MW_CLIENT = None
+
+if POSTHOG_PROJECT_TOKEN and POSTHOG_HOST:
+    from posthog import Posthog
+
+    POSTHOG_MW_CLIENT = Posthog(
+        POSTHOG_PROJECT_TOKEN,
+        host=POSTHOG_HOST,
+        enable_exception_autocapture=True,
+    )
+    atexit.register(POSTHOG_MW_CLIENT.shutdown)
+elif DEBUG:
+    posthog_logger = logging.getLogger(__name__)
+    for posthog_variable in ('POSTHOG_PROJECT_TOKEN', 'POSTHOG_HOST'):
+        if not env(posthog_variable, default=None):
+            posthog_logger.warning(
+                '%s variable required by PostHog is missing or un-configured, '
+                'this causes events to be silently missed. This error stops '
+                'appearing once %s is configured',
+                posthog_variable,
+                posthog_variable,
+            )
+
 ALLOWED_HOSTS = env('ALLOWED_HOSTS', cast=list, default=[])
 
 
@@ -83,6 +111,11 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    *(
+        ['posthog.integrations.django.PosthogContextMiddleware']
+        if POSTHOG_MW_CLIENT
+        else []
+    ),
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
