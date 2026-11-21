@@ -3,6 +3,7 @@ import urllib
 from decimal import Decimal
 from typing import Any, Dict
 
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.db.models import QuerySet, Sum
@@ -95,6 +96,8 @@ class DeliveryNoteBulkCreateView(ManagerAuthMixin, CreateView):
 
     def get_success_url(self) -> str:
         messages.success(self.request, "Albarán creado correctamente.")
+        if settings.POSTHOG_MW_CLIENT:
+            settings.POSTHOG_MW_CLIENT.capture("delivery_note_bulk_created")
 
         date = self.request.POST["date"]
         on_success = self.request.POST.get("on-success")
@@ -133,6 +136,8 @@ class DeliveryNoteBulkUpdateView(ManagerAuthMixin, UpdateView):
         msg = (f"Albarán con fecha { note_date } de { self.object.customer.username } "
                f"y producto {self.object.product.name} actualizado correctamente.")
         messages.info(self.request, msg)
+        if settings.POSTHOG_MW_CLIENT:
+            settings.POSTHOG_MW_CLIENT.capture("delivery_note_bulk_updated")
 
         return reverse_lazy("lupanes:deliverynote-month", args=(date.year, date.month))
 
@@ -144,6 +149,8 @@ class DeliveryNoteBulkDeleteView(ManagerAuthMixin, DeleteView):
     def get_success_url(self) -> str:
         date = self.object.date
         messages.info(self.request, "Albarán borrado correctamente.")
+        if settings.POSTHOG_MW_CLIENT:
+            settings.POSTHOG_MW_CLIENT.capture("delivery_note_bulk_deleted")
         return reverse_lazy("lupanes:deliverynote-month", args=(date.year, date.month))
 
 
